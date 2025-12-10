@@ -264,11 +264,14 @@ begin
 	end
 end
 
-always@(posedge offsetfound) begin
-	DATA_0_L=best_offset*(255/maxoffset);
-	DATA_1_L =best_offset_1*(255/maxoffset);
-	//DATA_0_L=(org_L[WIDTH * row + col  ]+org_R[WIDTH * row + col  ])/2 ;
-	//DATA_1_L =(org_L[WIDTH * row + col+1  ]+org_R[WIDTH * row + col+1  ])/2;
+// 修复：在HCLK时钟域内更新数据，而不是用offsetfound作为时钟
+always@(posedge HCLK) begin
+	if(offsetfound) begin
+		DATA_0_L <= best_offset*(255/maxoffset);
+		DATA_1_L <= best_offset_1*(255/maxoffset);
+		//DATA_0_L=(org_L[WIDTH * row + col  ]+org_R[WIDTH * row + col  ])/2 ;
+		//DATA_1_L =(org_L[WIDTH * row + col+1  ]+org_R[WIDTH * row + col+1  ])/2;
+	end
 end
 //-------------------------------------------------//
 //----------------Data counting---------- ---------//
@@ -279,30 +282,34 @@ begin
         data_count <= 0;
     end
     else begin
-        if(ctrl_data_run) begin
-
-				data_count <= data_count + 1;
-
-			end
+        if(ctrl_data_run && offsetfound) begin
+				// 只在找到一个像素的视差值时计数
+				data_count <= data_count + 2; // 每次处理2个像素
+		end
     end
 end
 assign VSYNC = ctrl_vsync_run;
-assign ctrl_done = (data_count == 308487)? 1'b1: 1'b0; // done flag308472
+assign ctrl_done = (data_count >= WIDTH*HEIGHT)? 1'b1: 1'b0; // 320*240 = 76800
 //-------------------------------------------------//
 //-------------  Image processing   ---------------//
 //-------------------------------------------------//
+// 修复：HSYNC需要保持一个时钟周期来让image_write捕获数据
+reg hsync_reg;
+always @(posedge HCLK, negedge HRESETn) begin
+	if(~HRESETn) begin
+		hsync_reg <= 1'b0;
+	end
+	else begin
+		hsync_reg <= offsetfound; // offsetfound后一个周期拉高HSYNC
+	end
+end
+
 always @(*) begin
-	
-	HSYNC   = 1'b0;
-	DATA_0_L = 0;
-	DATA_1_L = 0;
-	DATA_0_R = 0;                                       
-	DATA_1_R = 0;
-                                       
-	if(ctrl_data_run) begin
-		if (offsetfound) HSYNC   = 1'b1;
-		else HSYNC   = 1'b0;
-		
+	if(ctrl_data_run && hsync_reg) begin
+		HSYNC = 1'b1;
+	end
+	else begin
+		HSYNC = 1'b0;
 	end
 end
 
@@ -310,13 +317,16 @@ end
 always @(posedge HCLK) begin
         SSD_calc<=0;
         if (offsetping==1) begin
-			 
-					 for(x=-(window-1)/2; x<((window-1)/2); x=x+1) begin
-							for(y=-(window-1)/2; y<((window-1)/2); y=y+1) begin
-								ssd<=(org_L[(row + x ) * WIDTH + col + y   ]-org_R[(row + x ) * WIDTH + col + y -offset])*(org_L[(row +  x ) * WIDTH + col + y   ]-org_R[(row +  x ) * WIDTH + col + y - offset]);
-								ssd_1<=(org_L[(row + x ) * WIDTH + col + y  + 1 ]-org_R[(row + x ) * WIDTH + col + y -offset + 1 ])*(org_L[(row +  x ) * WIDTH + col + y  + 1 ]-org_R[(row +  x ) * WIDTH + col + y - offset + 1 ]);
-							end
-						end
+			 	// 修复：需要累加所有窗口内的差值平方和
+				ssd <= 0;
+				ssd_1 <= 0;
+				for(x=-(window-1)/2; x<((window-1)/2); x=x+1) begin
+					for(y=-(window-1)/2; y<((window-1)/2); y=y+1) begin
+						// 累加而不是覆盖
+						ssd <= ssd + (org_L[(row + x ) * WIDTH + col + y   ]-org_R[(row + x ) * WIDTH + col + y -offset])*(org_L[(row +  x ) * WIDTH + col + y   ]-org_R[(row +  x ) * WIDTH + col + y - offset]);
+						ssd_1 <= ssd_1 + (org_L[(row + x ) * WIDTH + col + y  + 1 ]-org_R[(row + x ) * WIDTH + col + y -offset + 1 ])*(org_L[(row +  x ) * WIDTH + col + y  + 1 ]-org_R[(row +  x ) * WIDTH + col + y - offset + 1 ]);
+					end
+				end
                 SSD_calc<=1;
 			end
         else begin
