@@ -1,12 +1,75 @@
 
-# DepthMap generation on FPGA
+# DepthMap generation on FPGA - Census Transform实现
 
-## Cite this work
+## 📋 项目概述
+
+本项目在FPGA上实现了**Census Transform + Hamming Distance**立体视差计算，相比原始的SSD算法，具有更好的光照鲁棒性和硬件效率。
+
+### 🎯 核心特性
+- ✅ **Census Transform** - 3×3窗口生成8-bit描述符
+- ✅ **Hamming Distance** - 4级流水线popcount
+- ✅ **光照鲁棒** - 对亮度变化不敏感
+- ✅ **硬件友好** - 无乘法器，只需比较器
+- ✅ **完整仿真** - Python参考 + Verilog实现
+
+## 📚 算法升级
+
+### 原始实现（已弃用）
+本项目最初基于 **SAD/SSD (Sum of Absolute/Squared Differences)** 算法实现，原始代码和文档已归档到 `legacy_ssd/` 目录。
+
+### 当前实现（Census Transform）
+Census Transform将像素窗口转换为二进制描述符，对光照变化具有鲁棒性，更适合实际应用场景。
+
+| 特性 | SSD | Census + Hamming |
+|------|-----|------------------|
+| 光照鲁棒性 | ❌ | ✅ |
+| 硬件资源 | 49个乘法器 | 8个比较器 |
+| 流水线化 | 困难 | 容易 |
+
+## 🚀 快速开始
+
+详细使用说明请查看：**[CENSUS_README.md](CENSUS_README.md)**
+
+### Python验证
+```bash
+python census_python_reference.py
+```
+
+### Vivado仿真
+```tcl
+# 打开Vivado项目
+open_project FPGA_depthMap_sim/FPGA_depthMap_sim.xpr
+
+# 运行单元测试（可选）
+source run_census_tests.tcl
+
+# 生成完整视差图
+set_property top tb_disparity_unified [get_filesets sim_1]
+launch_simulation
+run -all
+```
+
+## 📁 项目结构
+
+```
+census_transform.v          - Census变换 + 窗口生成器
+hamming_distance.v          - Hamming距离计算
+image_read_census.v         - Census立体匹配主模块
+tb_disparity_unified.v      - 统一测试平台
+census_python_reference.py  - Python参考实现
+legacy_ssd/                 - 原始SSD实现（存档）
+```
+
+---
+
+## 引用原始工作
+
+本项目基于以下原始工作改进：
 
 Jayasena, A., 2021. Register Transfer Level Disparity generator with Stereo Vision. Journal of Open Research Software, 9(1), p.18. DOI: http://doi.org/10.5334/jors.339
 
-```
-Citation (bibtex) [Switch view]@article{Jayasena_2021,
+```bibtex
+@article{Jayasena_2021,
 	doi = {10.5334/jors.339},
 	url = {https://doi.org/10.5334%2Fjors.339},
 	year = 2021,
@@ -17,9 +80,14 @@ Citation (bibtex) [Switch view]@article{Jayasena_2021,
 	journal = {Journal of Open Research Software}
 } 
 ```
-## About
 
-Most of the image processing projects in academia has been done on higher-end FPGA's with a considerable amount of resources. The main objective of this project is to implement a reliable embedded system on a lower end FPGA with limited resources. This project is based on Disparity calculation based on SAD (Sum of Absolute Difference) algorithm and creating a depth map.
+---
+
+## 关于原始项目
+
+Most of the image processing projects in academia has been done on higher-end FPGA's with a considerable amount of resources. The main objective of this project is to implement a reliable embedded system on a lower end FPGA with limited resources. 
+
+**原始实现**基于 SAD (Sum of Absolute Difference) 算法，**当前实现**已升级为Census Transform算法以获得更好的性能。
 
 <img width="300" height="200" src="https://github.com/Archfx/FPGA-DepthMap-Basys3/blob/320x240/IMG/basys3.png" align="right">
 <img width="200" height="200" src="https://github.com/Archfx/FPGA-DepthMap-Basys3/blob/320x240/IMG/ov7670.png" align="right">
